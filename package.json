@@ -1,0 +1,7 @@
+{
+  "name": "vercel-binance-funding",
+  "version": "1.0.0",
+  "dependencies": {
+    "ccxt": "^4.1.88"
+  }
+}
