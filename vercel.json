@@ -1,8 +1,7 @@
 {
   "version": 2,
-  "functions": {
-    "api/funding.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  "routes": [
+    { "src": "/api/funding", "dest": "/api/funding.js" },
+    { "src": "/", "dest": "/index.html" }
+  ]
 }
