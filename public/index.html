@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Binance Funding Rates</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #f9f9f9; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 8px 12px; border: 1px solid #ccc; }
+    th { background: #333; color: white; }
+    tr:nth-child(even) { background: #f2f2f2; }
+  </style>
+</head>
+<body>
+  <h2>Binance Funding Rates</h2>
+  <table id="fundingTable">
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Funding Count</th>
+        <th>Total Funding</th>
+        <th>Start Time</th>
+        <th>End Time</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    fetch('/api/funding')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.result)) {
+          const tbody = document.querySelector('#fundingTable tbody');
+          data.result.forEach(item => {
+            const row = `
+              <tr>
+                <td>${item.symbol}</td>
+                <td>${item.count}</td>
+                <td>${item.totalFunding.toFixed(4)}</td>
+                <td>${item.startTime}</td>
+                <td>${item.endTime}</td>
+              </tr>
+            `;
+            tbody.innerHTML += row;
+          });
+        } else {
+          document.body.innerHTML += '<p>Failed to load data.</p>';
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        document.body.innerHTML += '<p>Error loading data.</p>';
+      });
+  </script>
+</body>
+</html>
