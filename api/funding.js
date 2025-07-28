@@ -98,7 +98,7 @@ async function getFundingData(exchange, exchangeName, usdtPerpFilter) {
 export default async function handler(req, res) {
   try {
     // Initialize Binance
-    const binance = new ccxt.binanceusdm({
+    const binance = new ccxt.binance({
       apiKey: process.env.BINANCE_API_KEY,
       secret: process.env.BINANCE_API_SECRET,
       enableRateLimit: true,
