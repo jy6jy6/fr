@@ -1,132 +1,144 @@
-import ccxt from 'ccxt';
+const ccxt = require('ccxt');
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+module.exports = async (req, res) => {
+  const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
+  const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET;
+  const PHEMEX_API_KEY = process.env.PHEMEX_API_KEY;
+  const PHEMEX_API_SECRET = process.env.PHEMEX_API_SECRET;
 
-function formatSG(dt) {
-  return new Date(dt).toLocaleString('en-SG', { hour12: false });
-}
+  const result = [];
 
-async function getFundingData(exchange, exchangeName, usdtPerpFilter) {
-  const allFundingRecords = [];
-  const allSummaryRecords = [];
+  try {
+    // BINANCE
+    const binance = new ccxt.binance({
+      apiKey: BINANCE_API_KEY,
+      secret: BINANCE_API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: 'future' }
+    });
 
-  const symbols = exchange.symbols.filter(usdtPerpFilter);
+    await binance.loadMarkets();
+    const binancePositions = await binance.fetchPositions();
+    const openBinancePositions = binancePositions.filter(p => p.contracts && p.contracts > 0);
 
-  const positions = await exchange.fetchPositions(symbols);
-  const openPositions = positions.filter(p => p.contracts && p.contracts > 0);
+    for (const pos of openBinancePositions) {
+      const symbol = pos.symbol;
+      const since = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days
+      let funding = [];
+      let seen = new Set();
+      let cursor = since;
 
-  for (const pos of openPositions) {
-    const symbol = pos.symbol;
-    const cleanSymbol = symbol.split(':')[0].replace('/USDT', '').replace('/USDT:USDT', '');
-    let since = undefined;
-    let allFunding = [];
-    const seen = new Set();
-
-    try {
       while (true) {
-        const history = await exchange.fetchFundingHistory(symbol, since, 200);
-        if (!history || history.length === 0) break;
+        const data = await binance.fetchFundingHistory(symbol, cursor, 1000);
+        if (!data || data.length === 0) break;
 
-        for (const f of history) {
-          const key = `${f.timestamp}_${f.amount}`;
+        for (const f of data) {
+          const key = `${f.timestamp}-${f.amount}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            funding.push(f);
+          }
+        }
+
+        const last = data[data.length - 1].timestamp;
+        if (last <= cursor) break;
+        cursor = last + 1;
+      }
+
+      funding.sort((a, b) => a.timestamp - b.timestamp);
+
+      let cycles = [], current = [], lastTs = null;
+      for (const f of funding) {
+        if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
+          if (current.length) cycles.push(current);
+          current = [];
+        }
+        current.push(f);
+        lastTs = f.timestamp;
+      }
+      if (current.length) cycles.push(current);
+
+      const lastCycle = cycles[cycles.length - 1];
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
+
+      result.push({
+        source: "binance",
+        symbol,
+        count: lastCycle.length,
+        totalFunding: total,
+        startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
+        endTime: new Date(lastCycle[lastCycle.length - 1].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })
+      });
+    }
+
+    // PHEMEX
+    const phemex = new ccxt.phemex({
+      apiKey: PHEMEX_API_KEY,
+      secret: PHEMEX_API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: 'swap' }
+    });
+
+    await phemex.loadMarkets();
+    const usdtPerpSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
+    const phemexPositions = await phemex.fetch_positions(usdtPerpSymbols);
+    const openPhemexPositions = phemexPositions.filter(p => p.contracts && p.contracts > 0);
+
+    for (const pos of openPhemexPositions) {
+      const symbol = pos.symbol;
+      const since = null;
+      let allFunding = [];
+      let seen = new Set();
+      let cursor = since;
+
+      while (true) {
+        const data = await phemex.fetchFundingHistory(symbol, cursor, 200);
+        if (!data || data.length === 0) break;
+
+        for (const f of data) {
+          const key = `${f.timestamp}-${f.amount}`;
           if (!seen.has(key)) {
             seen.add(key);
             allFunding.push(f);
           }
         }
 
-        const lastTs = history[history.length - 1].timestamp;
-        if (since && lastTs <= since) break;
-        since = lastTs + 1;
-
-        await sleep(exchange.rateLimit);
+        const last = data[data.length - 1].timestamp;
+        if (cursor && last <= cursor) break;
+        cursor = last + 1;
+        await new Promise(r => setTimeout(r, phemex.rateLimit));
       }
-    } catch (err) {
-      console.warn(`[${exchangeName}] Error fetching for ${symbol}: ${err.message}`);
-      continue;
-    }
 
-    allFunding.sort((a, b) => a.timestamp - b.timestamp);
+      allFunding.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Group into 9-hour cycles
-    const cycles = [];
-    let current = [];
-    let lastTs = null;
-
-    for (const f of allFunding) {
-      if (lastTs && f.timestamp - lastTs > 9 * 3600 * 1000) {
-        if (current.length > 0) cycles.push(current);
-        current = [];
+      let cycles = [], current = [], lastTs = null;
+      for (const f of allFunding) {
+        if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
+          if (current.length) cycles.push(current);
+          current = [];
+        }
+        current.push(f);
+        lastTs = f.timestamp;
       }
-      current.push(f);
-      lastTs = f.timestamp;
-    }
-    if (current.length > 0) cycles.push(current);
+      if (current.length) cycles.push(current);
 
-    if (cycles.length === 0) continue;
+      const lastCycle = cycles[cycles.length - 1];
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0); // invert
 
-    const lastCycle = cycles[cycles.length - 1];
-    let totalFunding = 0;
-
-    for (const f of lastCycle) {
-      const amt = -parseFloat(f.amount); // invert sign to show cost
-      totalFunding += amt;
-      allFundingRecords.push({
-        exchange: exchangeName,
-        symbol: cleanSymbol,
-        datetime: formatSG(f.timestamp),
-        amount: amt,
+      result.push({
+        source: "phemex",
+        symbol: symbol.replace('/USDT:USDT', ''),
+        count: lastCycle.length,
+        totalFunding: total,
+        startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
+        endTime: new Date(lastCycle[lastCycle.length - 1].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })
       });
     }
 
-    allSummaryRecords.push({
-      exchange: exchangeName,
-      symbol: cleanSymbol,
-      total_funding_fee: totalFunding,
-      record_count: lastCycle.length,
-      cycle_count: cycles.length,
-      start_time: formatSG(lastCycle[0].timestamp),
-      end_time: formatSG(lastCycle[lastCycle.length - 1].timestamp),
-    });
+    res.status(200).json({ success: true, result });
+
+  } catch (e) {
+    console.error("Funding script error:", e);
+    res.status(500).json({ error: e.message });
   }
-
-  return { fundingRecords: allFundingRecords, summaryRecords: allSummaryRecords };
-}
-
-export default async function handler(req, res) {
-  try {
-    // Initialize Binance
-    const binance = new ccxt.binance({
-      apiKey: process.env.BINANCE_API_KEY,
-      secret: process.env.BINANCE_API_SECRET,
-      enableRateLimit: true,
-      options: { defaultType: 'future' },
-    });
-
-    // Initialize Phemex
-    const phemex = new ccxt.phemex({
-      apiKey: process.env.PHEMEX_API_KEY,
-      secret: process.env.PHEMEX_API_SECRET,
-      enableRateLimit: true,
-      options: { defaultType: 'swap' },
-    });
-
-    await binance.loadMarkets();
-    await phemex.loadMarkets();
-
-    const [binanceData, phemexData] = await Promise.all([
-      getFundingData(binance, 'Binance', (s) => s.endsWith('USDT')),
-      getFundingData(phemex, 'Phemex', (s) => s.endsWith('/USDT:USDT')),
-    ]);
-
-    res.status(200).json({
-      fundingRecords: [...binanceData.fundingRecords, ...phemexData.fundingRecords],
-      summaryRecords: [...binanceData.summaryRecords, ...phemexData.summaryRecords],
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-}
+};
