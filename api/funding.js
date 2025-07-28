@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
   const result = [];
 
   try {
-    // BINANCE
+    // --- BINANCE ---
     const binance = new ccxt.binance({
       apiKey: BINANCE_API_KEY,
       secret: BINANCE_API_SECRET,
@@ -19,14 +19,12 @@ module.exports = async (req, res) => {
 
     await binance.loadMarkets();
     const binancePositions = await binance.fetchPositions();
-    const openBinancePositions = binancePositions.filter(p => p.contracts && p.contracts > 0);
+    const openBinance = binancePositions.filter(p => p.contracts && p.contracts > 0);
 
-    for (const pos of openBinancePositions) {
+    for (const pos of openBinance) {
       const symbol = pos.symbol;
-      const since = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days
-      let funding = [];
-      let seen = new Set();
-      let cursor = since;
+      const since = Date.now() - 30 * 24 * 60 * 60 * 1000; // last 30 days
+      let funding = [], seen = new Set(), cursor = since;
 
       while (true) {
         const data = await binance.fetchFundingHistory(symbol, cursor, 1000);
@@ -46,8 +44,8 @@ module.exports = async (req, res) => {
       }
 
       funding.sort((a, b) => a.timestamp - b.timestamp);
-
       let cycles = [], current = [], lastTs = null;
+
       for (const f of funding) {
         if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
           if (current.length) cycles.push(current);
@@ -57,8 +55,11 @@ module.exports = async (req, res) => {
         lastTs = f.timestamp;
       }
       if (current.length) cycles.push(current);
+      if (cycles.length === 0) continue;
 
       const lastCycle = cycles[cycles.length - 1];
+      if (!lastCycle || lastCycle.length === 0) continue;
+
       const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
 
       result.push({
@@ -71,7 +72,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // PHEMEX
+    // --- PHEMEX ---
     const phemex = new ccxt.phemex({
       apiKey: PHEMEX_API_KEY,
       secret: PHEMEX_API_SECRET,
@@ -80,16 +81,14 @@ module.exports = async (req, res) => {
     });
 
     await phemex.loadMarkets();
-    const usdtPerpSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
-    const phemexPositions = await phemex.fetch_positions(usdtPerpSymbols);
-    const openPhemexPositions = phemexPositions.filter(p => p.contracts && p.contracts > 0);
+    const usdtSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
+    const phemexPositions = await phemex.fetch_positions(usdtSymbols);
+    const openPhemex = phemexPositions.filter(p => p.contracts && p.contracts > 0);
 
-    for (const pos of openPhemexPositions) {
+    for (const pos of openPhemex) {
       const symbol = pos.symbol;
-      const since = null;
-      let allFunding = [];
-      let seen = new Set();
-      let cursor = since;
+      const cleanSymbol = symbol.replace('/USDT:USDT', '');
+      let allFunding = [], seen = new Set(), cursor = null;
 
       while (true) {
         const data = await phemex.fetchFundingHistory(symbol, cursor, 200);
@@ -110,8 +109,8 @@ module.exports = async (req, res) => {
       }
 
       allFunding.sort((a, b) => a.timestamp - b.timestamp);
-
       let cycles = [], current = [], lastTs = null;
+
       for (const f of allFunding) {
         if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
           if (current.length) cycles.push(current);
@@ -121,13 +120,16 @@ module.exports = async (req, res) => {
         lastTs = f.timestamp;
       }
       if (current.length) cycles.push(current);
+      if (cycles.length === 0) continue;
 
       const lastCycle = cycles[cycles.length - 1];
-      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0); // invert
+      if (!lastCycle || lastCycle.length === 0) continue;
+
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0); // invert Phemex
 
       result.push({
         source: "phemex",
-        symbol: symbol.replace('/USDT:USDT', ''),
+        symbol: cleanSymbol,
         count: lastCycle.length,
         totalFunding: total,
         startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
@@ -138,7 +140,7 @@ module.exports = async (req, res) => {
     res.status(200).json({ success: true, result });
 
   } catch (e) {
-    console.error("Funding script error:", e);
+    console.error("❌ Funding API error:", e);
     res.status(500).json({ error: e.message });
   }
 };
