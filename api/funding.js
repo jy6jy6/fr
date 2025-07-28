@@ -23,6 +23,7 @@ module.exports = async (req, res) => {
 
     for (const pos of openBinance) {
       const symbol = pos.symbol;
+      const cleanSymbol = symbol.replace('/USDT:USDT', '');
       const since = Date.now() - 30 * 24 * 60 * 60 * 1000; // last 30 days
       let funding = [], seen = new Set(), cursor = since;
 
@@ -64,7 +65,7 @@ module.exports = async (req, res) => {
 
       result.push({
         source: "binance",
-        symbol,
+        symbol: cleanSymbol,
         count: lastCycle.length,
         totalFunding: total,
         startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
