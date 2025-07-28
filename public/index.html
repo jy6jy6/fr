@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Binance Funding Rates</title>
+  <title>Funding Fee Overview (Binance + Phemex)</title>
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #f9f9f9; }
     table { border-collapse: collapse; width: 100%; }
@@ -13,11 +13,12 @@
   </style>
 </head>
 <body>
-  <h2>Binance Funding Rates</h2>
+  <h2>Funding Fee Overview (Binance + Phemex)</h2>
   <table id="fundingTable">
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>Source</th>
         <th>Funding Count</th>
         <th>Total Funding</th>
         <th>Start Time</th>
@@ -33,10 +34,15 @@
       .then(data => {
         if (data.success && Array.isArray(data.result)) {
           const tbody = document.querySelector('#fundingTable tbody');
+
+          // Sort by symbol
+          data.result.sort((a, b) => a.symbol.localeCompare(b.symbol));
+
           data.result.forEach(item => {
             const row = `
               <tr>
                 <td>${item.symbol}</td>
+                <td>${item.source}</td>
                 <td>${item.count}</td>
                 <td>${item.totalFunding.toFixed(4)}</td>
                 <td>${item.startTime}</td>
