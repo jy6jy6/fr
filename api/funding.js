@@ -5,8 +5,14 @@ module.exports = async (req, res) => {
   const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET;
   const PHEMEX_API_KEY = process.env.PHEMEX_API_KEY;
   const PHEMEX_API_SECRET = process.env.PHEMEX_API_SECRET;
+  const BYBIT_API_KEY = process.env.BYBIT_API_KEY;
+  const BYBIT_API_SECRET = process.env.BYBIT_API_SECRET;
 
   const result = [];
+
+  function toSGTime(ts) {
+    return new Date(ts).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
+  }
 
   try {
     // --- BINANCE ---
