@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
       apiKey: BINANCE_API_KEY,
       secret: BINANCE_API_SECRET,
       enableRateLimit: true,
-      options: { defaultType: 'future' }
+      options: { defaultType: 'future' },
     });
 
     await binance.loadMarkets();
@@ -30,7 +30,7 @@ module.exports = async (req, res) => {
     for (const pos of openBinance) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      const since = Date.now() - 30 * 24 * 60 * 60 * 1000; // last 30 days
+      const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
       let funding = [], seen = new Set(), cursor = since;
 
       while (true) {
@@ -62,10 +62,10 @@ module.exports = async (req, res) => {
         lastTs = f.timestamp;
       }
       if (current.length) cycles.push(current);
-      if (cycles.length === 0) continue;
+      if (!cycles.length) continue;
 
-      const lastCycle = cycles[cycles.length - 1];
-      if (!lastCycle || lastCycle.length === 0) continue;
+      const lastCycle = cycles.at(-1);
+      if (!lastCycle?.length) continue;
 
       const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
 
@@ -74,8 +74,8 @@ module.exports = async (req, res) => {
         symbol: cleanSymbol,
         count: lastCycle.length,
         totalFunding: total,
-        startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
-        endTime: new Date(lastCycle[lastCycle.length - 1].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })
+        startTime: toSGTime(lastCycle[0].timestamp),
+        endTime: toSGTime(lastCycle.at(-1).timestamp),
       });
     }
 
@@ -84,12 +84,12 @@ module.exports = async (req, res) => {
       apiKey: PHEMEX_API_KEY,
       secret: PHEMEX_API_SECRET,
       enableRateLimit: true,
-      options: { defaultType: 'swap' }
+      options: { defaultType: 'swap' },
     });
 
     await phemex.loadMarkets();
-    const usdtSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
-    const phemexPositions = await phemex.fetch_positions(usdtSymbols);
+    const phemexSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
+    const phemexPositions = await phemex.fetch_positions(phemexSymbols);
     const openPhemex = phemexPositions.filter(p => p.contracts && p.contracts > 0);
 
     for (const pos of openPhemex) {
@@ -127,32 +127,24 @@ module.exports = async (req, res) => {
         lastTs = f.timestamp;
       }
       if (current.length) cycles.push(current);
-      if (cycles.length === 0) continue;
+      if (!cycles.length) continue;
 
-      const lastCycle = cycles[cycles.length - 1];
-      if (!lastCycle || lastCycle.length === 0) continue;
+      const lastCycle = cycles.at(-1);
+      if (!lastCycle?.length) continue;
 
-      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0); // invert Phemex
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0);
 
       result.push({
         source: "phemex",
         symbol: cleanSymbol,
         count: lastCycle.length,
         totalFunding: total,
-        startTime: new Date(lastCycle[0].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' }),
-        endTime: new Date(lastCycle[lastCycle.length - 1].timestamp).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })
+        startTime: toSGTime(lastCycle[0].timestamp),
+        endTime: toSGTime(lastCycle.at(-1).timestamp),
       });
     }
 
-    res.status(200).json({ success: true, result });
-
-  } catch (e) {
-    console.error("❌ Funding API error:", e);
-    res.status(500).json({ error: e.message });
-  }
-};
-
- // --- BYBIT ---
+    // --- BYBIT ---
     const bybit = new ccxt.bybit({
       apiKey: BYBIT_API_KEY,
       secret: BYBIT_API_SECRET,
