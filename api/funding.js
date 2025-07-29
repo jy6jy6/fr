@@ -145,3 +145,74 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 };
+
+ // --- BYBIT ---
+    const bybit = new ccxt.bybit({
+      apiKey: BYBIT_API_KEY,
+      secret: BYBIT_API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: 'future' },
+    });
+
+    await bybit.loadMarkets();
+    const bybitPositions = await bybit.fetchPositions();
+    const openBybit = bybitPositions.filter(p => p.contracts && p.contracts > 0);
+
+    for (const pos of openBybit) {
+      const symbol = pos.symbol;
+      const cleanSymbol = symbol.replace('/USDT:USDT', '');
+      let allFunding = [], seen = new Set(), cursor = Date.now() - 30 * 86400 * 1000;
+
+      while (true) {
+        const data = await bybit.fetchFundingHistory(symbol, cursor, 1000);
+        if (!data || data.length === 0) break;
+
+        for (const f of data) {
+          const key = `${f.timestamp}-${f.amount}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            allFunding.push(f);
+          }
+        }
+
+        const last = data[data.length - 1].timestamp;
+        if (last <= cursor) break;
+        cursor = last + 1;
+      }
+
+      allFunding.sort((a, b) => a.timestamp - b.timestamp);
+      let cycles = [], current = [], lastTs = null;
+
+      for (const f of allFunding) {
+        if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
+          if (current.length) cycles.push(current);
+          current = [];
+        }
+        current.push(f);
+        lastTs = f.timestamp;
+      }
+      if (current.length) cycles.push(current);
+      if (!cycles.length) continue;
+
+      const lastCycle = cycles.at(-1);
+      if (!lastCycle?.length) continue;
+
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
+
+      result.push({
+        source: "bybit",
+        symbol: cleanSymbol,
+        count: lastCycle.length,
+        totalFunding: total,
+        startTime: toSGTime(lastCycle[0].timestamp),
+        endTime: toSGTime(lastCycle.at(-1).timestamp),
+      });
+    }
+
+    res.status(200).json({ success: true, result });
+
+  } catch (e) {
+    console.error("❌ Funding API error:", e);
+    res.status(500).json({ error: e.message });
+  }
+};
