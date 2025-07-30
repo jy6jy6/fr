@@ -145,72 +145,69 @@ module.exports = async (req, res) => {
     }
 
     // --- BYBIT ---
-    const bybit = new ccxt.bybit({
+      const bybit = new ccxt.bybit({
       apiKey: BYBIT_API_KEY,
       secret: BYBIT_API_SECRET,
       enableRateLimit: true,
-      options: { defaultType: 'future' },
+      options: { defaultType: 'swap' },
     });
 
     await bybit.loadMarkets();
-    const bybitPositions = await bybit.fetchPositions();
-    const openBybit = bybitPositions.filter(p => p.contracts && p.contracts > 0);
+    const positions = await bybit.fetchPositions();
+    const openPositions = positions.filter(p => p.contracts && p.contracts > 0);
 
-    for (const pos of openBybit) {
+    const endTime = Date.now();
+    const since = endTime - 30 * 24 * 60 * 60 * 1000;
+
+    for (const pos of openPositions) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      let allFunding = [], seen = new Set(), cursor = Date.now() - 30 * 86400 * 1000;
+      let allFundings = [];
+      let currentStart = since;
 
-      while (true) {
-        const data = await bybit.fetchFundingHistory(symbol, cursor, 1000);
-        if (!data || data.length === 0) break;
-
-        for (const f of data) {
-          const key = `${f.timestamp}-${f.amount}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            allFunding.push(f);
-          }
+      while (currentStart < endTime) {
+        const fundings = await bybit.fetchFundingHistory(symbol, currentStart, 1000, { paginate: true });
+        if (fundings && fundings.length) {
+          allFundings.push(...fundings);
         }
-
-        const last = data[data.length - 1].timestamp;
-        if (last <= cursor) break;
-        cursor = last + 1;
+        const nextStart = currentStart + 7 * 24 * 60 * 60 * 1000;
+        if (nextStart >= endTime) break;
+        currentStart = nextStart + 1;
+        await new Promise(r => setTimeout(r, 500));
       }
 
-      allFunding.sort((a, b) => a.timestamp - b.timestamp);
-      let cycles = [], current = [], lastTs = null;
+      if (!allFundings.length) continue;
 
-      for (const f of allFunding) {
-        if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
-          if (current.length) cycles.push(current);
-          current = [];
+      allFundings.sort((a, b) => a.timestamp - b.timestamp);
+      const gapThreshold = 9 * 60 * 60 * 1000;
+
+      let currentCycleFundings = [];
+      for (let i = 0; i < allFundings.length - 1; i++) {
+        const timeDiff = allFundings[i + 1].timestamp - allFundings[i].timestamp;
+        if (timeDiff > gapThreshold) {
+          currentCycleFundings = allFundings.slice(i + 1);
+          break;
         }
-        current.push(f);
-        lastTs = f.timestamp;
       }
-      if (current.length) cycles.push(current);
-      if (!cycles.length) continue;
+      if (!currentCycleFundings.length) {
+        currentCycleFundings = allFundings;
+      }
 
-      const lastCycle = cycles.at(-1);
-      if (!lastCycle?.length) continue;
-
-      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
-
+      const total = currentCycleFundings.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0), 0);
       result.push({
-        source: "bybit",
+        source: 'bybit',
         symbol: cleanSymbol,
-        count: lastCycle.length,
+        count: currentCycleFundings.length,
         totalFunding: total,
-        startTime: toSGTime(lastCycle[0].timestamp),
-        endTime: toSGTime(lastCycle.at(-1).timestamp),
+        startTime: toSGTime(currentCycleFundings[0].timestamp),
+        endTime: toSGTime(currentCycleFundings.at(-1).timestamp),
       });
     }
 
     res.status(200).json({ success: true, result });
 
   } catch (e) {
-    console.error("❌ Funding API error:", e);
+    console.error('❌ Funding API error:', e);
     res.status(500).json({ error: e.message });
   }
 };
