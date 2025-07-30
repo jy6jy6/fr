@@ -22,7 +22,7 @@
     <thead>
       <tr>
         <th>Symbol</th>
-        <th>Symbol Total (USDT)</th>
+        <th>Total (USDT)</th>
         <th>Source</th>
         <th>Funding Count</th>
         <th>Total Funding</th>
@@ -63,14 +63,14 @@
                 const tdTotal = document.createElement('td');
                 tdTotal.rowSpan = entries.length;
                 tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
-                tdTotal.textContent = symbolTotal.toFixed(4);
+                tdTotal.textContent = symbolTotal.toFixed(2);
                 row.appendChild(tdTotal);
               }
 
               row.innerHTML += `
                 <td>${entry.source}</td>
+                <td>${parseFloat(entry.totalFunding).toFixed(2)}</td>
                 <td>${entry.count}</td>
-                <td>${parseFloat(entry.totalFunding).toFixed(4)}</td>
                 <td>${entry.startTime}</td>
                 <td>${entry.endTime}</td>
               `;
