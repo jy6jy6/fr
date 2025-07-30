@@ -11,7 +11,9 @@
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f2f2f2; }
     td.symbol-cell { font-weight: bold; background: #eee; }
-    td.total-cell { font-weight: bold; color: green; }
+    td.total-cell { font-weight: bold; }
+    td.total-cell.positive { color: green; }
+    td.total-cell.negative { color: red; }
   </style>
 </head>
 <body>
@@ -20,12 +22,12 @@
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>Symbol Total (USDT)</th>
         <th>Source</th>
         <th>Funding Count</th>
-        <th>Total Funding (USDT)</th>
+        <th>Total Funding</th>
         <th>Start Time</th>
         <th>End Time</th>
-        <th>Symbol Total</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -57,23 +59,21 @@
                 tdSymbol.className = 'symbol-cell';
                 tdSymbol.textContent = symbol;
                 row.appendChild(tdSymbol);
+
+                const tdTotal = document.createElement('td');
+                tdTotal.rowSpan = entries.length;
+                tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
+                tdTotal.textContent = symbolTotal.toFixed(4);
+                row.appendChild(tdTotal);
               }
 
               row.innerHTML += `
                 <td>${entry.source}</td>
                 <td>${entry.count}</td>
-                <td>${entry.totalFunding.toFixed(4)}</td>
+                <td>${parseFloat(entry.totalFunding).toFixed(4)}</td>
                 <td>${entry.startTime}</td>
                 <td>${entry.endTime}</td>
               `;
-
-              if (idx === 0) {
-                const tdTotal = document.createElement('td');
-                tdTotal.rowSpan = entries.length;
-                tdTotal.className = 'total-cell';
-                tdTotal.textContent = symbolTotal.toFixed(4);
-                row.appendChild(tdTotal);
-              }
 
               tbody.appendChild(row);
             });
