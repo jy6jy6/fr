@@ -193,7 +193,7 @@ module.exports = async (req, res) => {
         currentCycleFundings = allFundings;
       }
 
-      const total = currentCycleFundings.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0), 0);
+      const total = currentCycleFundings.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1, 0);
       result.push({
         source: 'bybit',
         symbol: cleanSymbol,
