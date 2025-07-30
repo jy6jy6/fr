@@ -3,26 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Funding Fee Overview (Binance + Phemex)</title>
+  <title>Funding Overview</title>
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #f9f9f9; }
     table { border-collapse: collapse; width: 100%; }
     th, td { padding: 8px 12px; border: 1px solid #ccc; }
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f2f2f2; }
+    td.symbol-cell { font-weight: bold; background: #eee; }
+    td.total-cell { font-weight: bold; color: green; }
   </style>
 </head>
 <body>
-  <h2>Funding Fee Overview (Binance + Phemex)</h2>
+  <h2>Funding Fee Overview</h2>
   <table id="fundingTable">
     <thead>
       <tr>
         <th>Symbol</th>
         <th>Source</th>
         <th>Funding Count</th>
-        <th>Total Funding</th>
+        <th>Total Funding (USDT)</th>
         <th>Start Time</th>
         <th>End Time</th>
+        <th>Symbol Total</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -35,22 +38,46 @@
         if (data.success && Array.isArray(data.result)) {
           const tbody = document.querySelector('#fundingTable tbody');
 
-          // Sort by symbol
-          data.result.sort((a, b) => a.symbol.localeCompare(b.symbol));
-
+          // Group by symbol
+          const grouped = {};
           data.result.forEach(item => {
-            const row = `
-              <tr>
-                <td>${item.symbol}</td>
-                <td>${item.source}</td>
-                <td>${item.count}</td>
-                <td>${item.totalFunding.toFixed(4)}</td>
-                <td>${item.startTime}</td>
-                <td>${item.endTime}</td>
-              </tr>
-            `;
-            tbody.innerHTML += row;
+            if (!grouped[item.symbol]) grouped[item.symbol] = [];
+            grouped[item.symbol].push(item);
           });
+
+          for (const [symbol, entries] of Object.entries(grouped)) {
+            const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
+
+            entries.forEach((entry, idx) => {
+              const row = document.createElement('tr');
+
+              if (idx === 0) {
+                const tdSymbol = document.createElement('td');
+                tdSymbol.rowSpan = entries.length;
+                tdSymbol.className = 'symbol-cell';
+                tdSymbol.textContent = symbol;
+                row.appendChild(tdSymbol);
+              }
+
+              row.innerHTML += `
+                <td>${entry.source}</td>
+                <td>${entry.count}</td>
+                <td>${entry.totalFunding.toFixed(4)}</td>
+                <td>${entry.startTime}</td>
+                <td>${entry.endTime}</td>
+              `;
+
+              if (idx === 0) {
+                const tdTotal = document.createElement('td');
+                tdTotal.rowSpan = entries.length;
+                tdTotal.className = 'total-cell';
+                tdTotal.textContent = symbolTotal.toFixed(4);
+                row.appendChild(tdTotal);
+              }
+
+              tbody.appendChild(row);
+            });
+          }
         } else {
           document.body.innerHTML += '<p>Failed to load data.</p>';
         }
