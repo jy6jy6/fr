@@ -7,6 +7,9 @@ module.exports = async (req, res) => {
   const PHEMEX_API_SECRET = process.env.PHEMEX_API_SECRET;
   const BYBIT_API_KEY = process.env.BYBIT_API_KEY;
   const BYBIT_API_SECRET = process.env.BYBIT_API_SECRET;
+  const MEXC_API_KEY = process.env.MEXC_API_KEY;
+  const MEXC_API_SECRET = process.env.MEXC_API_SECRET;
+
 
   const result = [];
 
@@ -201,6 +204,71 @@ module.exports = async (req, res) => {
         totalFunding: total,
         startTime: toSGTime(currentCycleFundings[0].timestamp),
         endTime: toSGTime(currentCycleFundings.at(-1).timestamp),
+      });
+    }
+
+    // --- MEXC ---
+    const mexc = new ccxt.mexc({
+      apiKey: MEXC_API_KEY,
+      secret: MEXC_API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: 'swap' },
+    });
+
+    await mexc.loadMarkets();
+    const mexcSymbols = mexc.symbols.filter(s => s.endsWith('/USDT:USDT'));
+    const mexcPositions = await mexc.fetch_positions(mexcSymbols);
+    const openMexc = mexcPositions.filter(p => p.contracts && p.contracts > 0);
+
+    for (const pos of openMexc) {
+      const symbol = pos.symbol;
+      const cleanSymbol = symbol.replace('/USDT:USDT', '');
+      let allFunding = [], seen = new Set(), cursor = null;
+
+      while (true) {
+        const data = await mexc.fetchFundingHistory(symbol, cursor, 1000);
+        if (!data || data.length === 0) break;
+
+        for (const f of data) {
+          const key = `${f.timestamp}-${f.amount}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            allFunding.push(f);
+          }
+        }
+
+        const last = data[data.length - 1].timestamp;
+        if (cursor && last <= cursor) break;
+        cursor = last + 1;
+        await new Promise(r => setTimeout(r, mexc.rateLimit));
+      }
+
+      allFunding.sort((a, b) => a.timestamp - b.timestamp);
+      let cycles = [], current = [], lastTs = null;
+
+      for (const f of allFunding) {
+        if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
+          if (current.length) cycles.push(current);
+          current = [];
+        }
+        current.push(f);
+        lastTs = f.timestamp;
+      }
+      if (current.length) cycles.push(current);
+      if (!cycles.length) continue;
+
+      const lastCycle = cycles.at(-1);
+      if (!lastCycle?.length) continue;
+
+      const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
+
+      result.push({
+        source: "mexc",
+        symbol: cleanSymbol,
+        count: lastCycle.length,
+        totalFunding: total,
+        startTime: toSGTime(lastCycle[0].timestamp),
+        endTime: toSGTime(lastCycle.at(-1).timestamp),
       });
     }
 
