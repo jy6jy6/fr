@@ -17,10 +17,13 @@
     td.total-cell { font-weight: bold; text-align: right; }
     td.total-cell.positive { color: green; }
     td.total-cell.negative { color: red; }
+    #loadTime { font-weight: bold; font-size: 1rem; margin-bottom: 1em; }
   </style>
 </head>
 <body>
   <h2>Funding Fee Overview</h2>
+  <p id="loadTime">⏱ Loading...</p>
+
   <table id="fundingTable">
     <thead>
       <tr>
@@ -38,87 +41,91 @@
   </table>
 
   <script>
-  function parseSGDateString(dateStr) {
-    // "22/07/2025, 12:00:00 am" -> Date object in Asia/Singapore
-    const [d, m, yAndRest] = dateStr.split('/');
-    const [y, timeStr] = yAndRest.split(', ');
-    return new Date(`${y}-${m}-${d}T${convertTo24Hr(timeStr)}+08:00`);
-  }
+    const startTime = performance.now();
 
-  function convertTo24Hr(timeStr) {
-    // Converts "12:00:00 am" or "8:00:01 pm" -> "00:00:00" or "20:00:01"
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes, seconds] = time.split(':').map(Number);
-    if (modifier.toLowerCase() === 'pm' && hours !== 12) hours += 12;
-    if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  }
+    function parseSGDateString(dateStr) {
+      const [d, m, yAndRest] = dateStr.split('/');
+      const [y, timeStr] = yAndRest.split(', ');
+      return new Date(`${y}-${m}-${d}T${convertTo24Hr(timeStr)}+08:00`);
+    }
 
-  function getHoldingDays(startStr) {
-    const startTime = parseSGDateString(startStr);
-    const now = new Date();
-    const diffMs = now - startTime;
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    return diffDays.toFixed(1);
-  }
+    function convertTo24Hr(timeStr) {
+      const [time, modifier] = timeStr.split(' ');
+      let [hours, minutes, seconds] = time.split(':').map(Number);
+      if (modifier.toLowerCase() === 'pm' && hours !== 12) hours += 12;
+      if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
 
-  fetch('/api/funding')
-    .then(res => res.json())
-    .then(data => {
-      if (data.success && Array.isArray(data.result)) {
-        const tbody = document.querySelector('#fundingTable tbody');
+    function getHoldingDays(startStr) {
+      const startTime = parseSGDateString(startStr);
+      const now = new Date();
+      const diffMs = now - startTime;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      return diffDays.toFixed(1);
+    }
 
-        const grouped = {};
-        data.result.forEach(item => {
-          if (!grouped[item.symbol]) grouped[item.symbol] = [];
-          grouped[item.symbol].push(item);
-        });
+    fetch('/api/funding')
+      .then(res => res.json())
+      .then(data => {
+        const endTime = performance.now();
+        const loadSeconds = ((endTime - startTime) / 1000).toFixed(2);
+        document.getElementById('loadTime').textContent = `⏱ Loaded in ${loadSeconds} seconds`;
 
-        const sortedSymbols = Object.keys(grouped).sort();
+        if (data.success && Array.isArray(data.result)) {
+          const tbody = document.querySelector('#fundingTable tbody');
 
-        for (const symbol of sortedSymbols) {
-          const entries = grouped[symbol];
-          const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
-
-          entries.forEach((entry, idx) => {
-            const row = document.createElement('tr');
-
-            if (idx === 0) {
-              const tdSymbol = document.createElement('td');
-              tdSymbol.rowSpan = entries.length;
-              tdSymbol.className = 'symbol-cell';
-              tdSymbol.textContent = symbol;
-              row.appendChild(tdSymbol);
-
-              const tdTotal = document.createElement('td');
-              tdTotal.rowSpan = entries.length;
-              tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
-              tdTotal.textContent = symbolTotal.toFixed(2);
-              row.appendChild(tdTotal);
-            }
-
-            const holdingDays = getHoldingDays(entry.startTime);
-
-            row.innerHTML += `
-              <td class="center">${entry.source}</td>
-              <td class="center">${entry.count}</td>
-              <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
-              <td class="center">${holdingDays}</td>
-              <td class="center">${entry.startTime}</td>
-              <td class="center">${entry.endTime}</td>
-            `;
-
-            tbody.appendChild(row);
+          const grouped = {};
+          data.result.forEach(item => {
+            if (!grouped[item.symbol]) grouped[item.symbol] = [];
+            grouped[item.symbol].push(item);
           });
+
+          const sortedSymbols = Object.keys(grouped).sort();
+
+          for (const symbol of sortedSymbols) {
+            const entries = grouped[symbol];
+            const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
+
+            entries.forEach((entry, idx) => {
+              const row = document.createElement('tr');
+
+              if (idx === 0) {
+                const tdSymbol = document.createElement('td');
+                tdSymbol.rowSpan = entries.length;
+                tdSymbol.className = 'symbol-cell';
+                tdSymbol.textContent = symbol;
+                row.appendChild(tdSymbol);
+
+                const tdTotal = document.createElement('td');
+                tdTotal.rowSpan = entries.length;
+                tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
+                tdTotal.textContent = symbolTotal.toFixed(2);
+                row.appendChild(tdTotal);
+              }
+
+              const holdingDays = getHoldingDays(entry.startTime);
+
+              row.innerHTML += `
+                <td class="center">${entry.source}</td>
+                <td class="center">${entry.count}</td>
+                <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
+                <td class="center">${holdingDays}</td>
+                <td class="center">${entry.startTime}</td>
+                <td class="center">${entry.endTime}</td>
+              `;
+
+              tbody.appendChild(row);
+            });
+          }
+        } else {
+          document.getElementById('loadTime').textContent = '❌ Failed to load data.';
         }
-      } else {
-        document.body.innerHTML += '<p>Failed to load data.</p>';
-      }
-    })
-    .catch(err => {
-      console.error(err);
-      document.body.innerHTML += '<p>Error loading data.</p>';
-    });
-</script>
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('loadTime').textContent = '❌ Error loading data.';
+      });
+  </script>
 </body>
 </html>
