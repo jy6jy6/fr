@@ -3,15 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Funding Overview</title>
+  <title>Funding Fee Overview</title>
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #f9f9f9; }
     table { border-collapse: collapse; width: 100%; }
     th, td { padding: 8px 12px; border: 1px solid #ccc; }
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f2f2f2; }
-    td.symbol-cell { font-weight: bold; background: #eee; }
-    td.total-cell { font-weight: bold; }
+
+    td.center { text-align: center; }
+    td.right { text-align: right; }
+    td.symbol-cell { font-weight: bold; background: #eee; text-align: center; }
+    td.total-cell { font-weight: bold; text-align: right; }
     td.total-cell.positive { color: green; }
     td.total-cell.negative { color: red; }
   </style>
@@ -26,6 +29,7 @@
         <th>Source</th>
         <th>Funding Count</th>
         <th>Total Funding</th>
+        <th>Holding Day</th>
         <th>Start Time</th>
         <th>End Time</th>
       </tr>
@@ -34,6 +38,12 @@
   </table>
 
   <script>
+    function getHoldingDays(startTime) {
+      const now = Date.now();
+      const days = (now - new Date(startTime).getTime()) / (24 * 60 * 60 * 1000);
+      return days.toFixed(1);
+    }
+
     fetch('/api/funding')
       .then(res => res.json())
       .then(data => {
@@ -47,7 +57,11 @@
             grouped[item.symbol].push(item);
           });
 
-          for (const [symbol, entries] of Object.entries(grouped)) {
+          // Sort symbols A–Z
+          const sortedSymbols = Object.keys(grouped).sort();
+
+          for (const symbol of sortedSymbols) {
+            const entries = grouped[symbol];
             const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
 
             entries.forEach((entry, idx) => {
@@ -63,16 +77,19 @@
                 const tdTotal = document.createElement('td');
                 tdTotal.rowSpan = entries.length;
                 tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
-                tdTotal.textContent = symbolTotal.toFixed(2);
+                tdTotal.textContent = symbolTotal.toFixed(4);
                 row.appendChild(tdTotal);
               }
 
+              const holdingDays = getHoldingDays(entry.startTime);
+
               row.innerHTML += `
-                <td>${entry.source}</td>
-                <td>${parseFloat(entry.totalFunding).toFixed(2)}</td>
-                <td>${entry.count}</td>
-                <td>${entry.startTime}</td>
-                <td>${entry.endTime}</td>
+                <td class="center">${entry.source}</td>
+                <td class="center">${entry.count}</td>
+                <td class="right">${parseFloat(entry.totalFunding).toFixed(4)}</td>
+                <td class="center">${holdingDays}</td>
+                <td class="center">${entry.startTime}</td>
+                <td class="center">${entry.endTime}</td>
               `;
 
               tbody.appendChild(row);
