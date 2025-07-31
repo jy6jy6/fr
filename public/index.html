@@ -38,71 +38,87 @@
   </table>
 
   <script>
-    function getHoldingDays(startTime) {
-      const now = Date.now();
-      const days = (now - new Date(startTime).getTime()) / (24 * 60 * 60 * 1000);
-      return days.toFixed(1);
-    }
+  function parseSGDateString(dateStr) {
+    // "22/07/2025, 12:00:00 am" -> Date object in Asia/Singapore
+    const [d, m, yAndRest] = dateStr.split('/');
+    const [y, timeStr] = yAndRest.split(', ');
+    return new Date(`${y}-${m}-${d}T${convertTo24Hr(timeStr)}+08:00`);
+  }
 
-    fetch('/api/funding')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.result)) {
-          const tbody = document.querySelector('#fundingTable tbody');
+  function convertTo24Hr(timeStr) {
+    // Converts "12:00:00 am" or "8:00:01 pm" -> "00:00:00" or "20:00:01"
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes, seconds] = time.split(':').map(Number);
+    if (modifier.toLowerCase() === 'pm' && hours !== 12) hours += 12;
+    if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 
-          // Group by symbol
-          const grouped = {};
-          data.result.forEach(item => {
-            if (!grouped[item.symbol]) grouped[item.symbol] = [];
-            grouped[item.symbol].push(item);
+  function getHoldingDays(startStr) {
+    const startTime = parseSGDateString(startStr);
+    const now = new Date();
+    const diffMs = now - startTime;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    return diffDays.toFixed(1);
+  }
+
+  fetch('/api/funding')
+    .then(res => res.json())
+    .then(data => {
+      if (data.success && Array.isArray(data.result)) {
+        const tbody = document.querySelector('#fundingTable tbody');
+
+        const grouped = {};
+        data.result.forEach(item => {
+          if (!grouped[item.symbol]) grouped[item.symbol] = [];
+          grouped[item.symbol].push(item);
+        });
+
+        const sortedSymbols = Object.keys(grouped).sort();
+
+        for (const symbol of sortedSymbols) {
+          const entries = grouped[symbol];
+          const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
+
+          entries.forEach((entry, idx) => {
+            const row = document.createElement('tr');
+
+            if (idx === 0) {
+              const tdSymbol = document.createElement('td');
+              tdSymbol.rowSpan = entries.length;
+              tdSymbol.className = 'symbol-cell';
+              tdSymbol.textContent = symbol;
+              row.appendChild(tdSymbol);
+
+              const tdTotal = document.createElement('td');
+              tdTotal.rowSpan = entries.length;
+              tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
+              tdTotal.textContent = symbolTotal.toFixed(2);
+              row.appendChild(tdTotal);
+            }
+
+            const holdingDays = getHoldingDays(entry.startTime);
+
+            row.innerHTML += `
+              <td class="center">${entry.source}</td>
+              <td class="center">${entry.count}</td>
+              <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
+              <td class="center">${holdingDays}</td>
+              <td class="center">${entry.startTime}</td>
+              <td class="center">${entry.endTime}</td>
+            `;
+
+            tbody.appendChild(row);
           });
-
-          // Sort symbols A–Z
-          const sortedSymbols = Object.keys(grouped).sort();
-
-          for (const symbol of sortedSymbols) {
-            const entries = grouped[symbol];
-            const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
-
-            entries.forEach((entry, idx) => {
-              const row = document.createElement('tr');
-
-              if (idx === 0) {
-                const tdSymbol = document.createElement('td');
-                tdSymbol.rowSpan = entries.length;
-                tdSymbol.className = 'symbol-cell';
-                tdSymbol.textContent = symbol;
-                row.appendChild(tdSymbol);
-
-                const tdTotal = document.createElement('td');
-                tdTotal.rowSpan = entries.length;
-                tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
-                tdTotal.textContent = symbolTotal.toFixed(4);
-                row.appendChild(tdTotal);
-              }
-
-              const holdingDays = getHoldingDays(entry.startTime);
-
-              row.innerHTML += `
-                <td class="center">${entry.source}</td>
-                <td class="center">${entry.count}</td>
-                <td class="right">${parseFloat(entry.totalFunding).toFixed(4)}</td>
-                <td class="center">${holdingDays}</td>
-                <td class="center">${entry.startTime}</td>
-                <td class="center">${entry.endTime}</td>
-              `;
-
-              tbody.appendChild(row);
-            });
-          }
-        } else {
-          document.body.innerHTML += '<p>Failed to load data.</p>';
         }
-      })
-      .catch(err => {
-        console.error(err);
-        document.body.innerHTML += '<p>Error loading data.</p>';
-      });
-  </script>
+      } else {
+        document.body.innerHTML += '<p>Failed to load data.</p>';
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      document.body.innerHTML += '<p>Error loading data.</p>';
+    });
+</script>
 </body>
 </html>
