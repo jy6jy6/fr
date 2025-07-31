@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
       let allFunding = [], seen = new Set();
       const endTime = Date.now();
-      const since = endTime - 30 * 24 * 60 * 60 * 1000; // last 30 days
+      const since = endTime - 90 * 24 * 60 * 60 * 1000; // last 90 days
       let startTime = since;
     
       while (startTime < endTime) {
