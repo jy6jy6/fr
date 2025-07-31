@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // --- PHEMEX ---
+     // --- PHEMEX ---
     const phemex = new ccxt.phemex({
       apiKey: PHEMEX_API_KEY,
       secret: PHEMEX_API_SECRET,
@@ -98,10 +98,15 @@ module.exports = async (req, res) => {
     for (const pos of openPhemex) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      let allFunding = [], seen = new Set(), cursor = null;
+      let allFunding = [], seen = new Set();
+      let page = 1;
 
       while (true) {
-        const data = await phemex.fetchFundingHistory(symbol, cursor, 200);
+        const data = await phemex.fetchFundingHistory(symbol, undefined, 100, {
+          page: page,
+          limit: 100
+        });
+
         if (!data || data.length === 0) break;
 
         for (const f of data) {
@@ -112,9 +117,8 @@ module.exports = async (req, res) => {
           }
         }
 
-        const last = data[data.length - 1].timestamp;
-        if (cursor && last <= cursor) break;
-        cursor = last + 1;
+        if (data.length < 100) break;
+        page++;
         await new Promise(r => setTimeout(r, phemex.rateLimit));
       }
 
