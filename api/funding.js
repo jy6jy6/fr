@@ -173,7 +173,7 @@ module.exports = async (req, res) => {
     const openPositions = positions.filter(p => p.contracts && p.contracts > 0);
 
     const endTime = Date.now();
-    const since = endTime - 30 * 24 * 60 * 60 * 1000;
+    const since = endTime - 90 * 24 * 60 * 60 * 1000;
 
     for (const pos of openPositions) {
       const symbol = pos.symbol;
