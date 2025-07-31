@@ -25,38 +25,46 @@ module.exports = async (req, res) => {
       enableRateLimit: true,
       options: { defaultType: 'future' },
     });
-
+    
     await binance.loadMarkets();
     const binancePositions = await binance.fetchPositions();
     const openBinance = binancePositions.filter(p => p.contracts && p.contracts > 0);
-
+    
     for (const pos of openBinance) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      let funding = [], seen = new Set(), cursor = since;
-
-      while (true) {
-        const data = await binance.fetchFundingHistory(symbol, cursor, 1000);
+      let allFunding = [], seen = new Set();
+      const endTime = Date.now();
+      const since = endTime - 30 * 24 * 60 * 60 * 1000; // last 30 days
+      let startTime = since;
+    
+      while (startTime < endTime) {
+        const data = await binance.fetchFundingHistory(symbol, startTime, 1000, {
+          incomeType: 'FUNDING_FEE',
+          startTime,
+          endTime,
+        });
+    
         if (!data || data.length === 0) break;
-
+    
         for (const f of data) {
           const key = `${f.timestamp}-${f.amount}`;
           if (!seen.has(key)) {
             seen.add(key);
-            funding.push(f);
+            allFunding.push(f);
           }
         }
-
+    
         const last = data[data.length - 1].timestamp;
-        if (last <= cursor) break;
-        cursor = last + 1;
+        if (last <= startTime) break;
+        startTime = last + 1;
+        await new Promise(r => setTimeout(r, binance.rateLimit));
       }
-
-      funding.sort((a, b) => a.timestamp - b.timestamp);
+    
+      allFunding.sort((a, b) => a.timestamp - b.timestamp);
       let cycles = [], current = [], lastTs = null;
-
-      for (const f of funding) {
+    
+      for (const f of allFunding) {
         if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
           if (current.length) cycles.push(current);
           current = [];
@@ -66,14 +74,14 @@ module.exports = async (req, res) => {
       }
       if (current.length) cycles.push(current);
       if (!cycles.length) continue;
-
+    
       const lastCycle = cycles.at(-1);
       if (!lastCycle?.length) continue;
-
+    
       const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
-
+    
       result.push({
-        source: "binance",
+        source: 'binance',
         symbol: cleanSymbol,
         count: lastCycle.length,
         totalFunding: total,
