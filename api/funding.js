@@ -214,21 +214,31 @@ module.exports = async (req, res) => {
       enableRateLimit: true,
       options: { defaultType: 'swap' },
     });
-
+    
     await mexc.loadMarkets();
-    const mexcSymbols = mexc.symbols.filter(s => s.endsWith('/USDT:USDT'));
-    const mexcPositions = await mexc.fetch_positions(mexcSymbols);
+    const mexcPositions = await mexc.fetch_positions(mexc.symbols);
     const openMexc = mexcPositions.filter(p => p.contracts && p.contracts > 0);
-
+    
     for (const pos of openMexc) {
-      const symbol = pos.symbol;
-      const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      let allFunding = [], seen = new Set(), cursor = null;
-
+      const unifiedSymbol = pos.symbol;
+      const cleanSymbol = unifiedSymbol.replace('/USDT:USDT', '');
+    
+      const market = mexc.market(unifiedSymbol);
+      const rawSymbol = market.id;
+    
+      let allFunding = [];
+      let seen = new Set();
+      let cursor = null;
+    
       while (true) {
-        const data = await mexc.fetchFundingHistory(symbol, cursor, 1000);
+        const data = await mexc.fetchFundingHistory(rawSymbol, cursor, 100)
+          .catch(e => {
+            console.warn(`⚠️ Failed to fetch MEXC funding history for ${rawSymbol}:`, e.message);
+            return [];
+          });
+    
         if (!data || data.length === 0) break;
-
+    
         for (const f of data) {
           const key = `${f.timestamp}-${f.amount}`;
           if (!seen.has(key)) {
@@ -236,16 +246,16 @@ module.exports = async (req, res) => {
             allFunding.push(f);
           }
         }
-
+    
         const last = data[data.length - 1].timestamp;
         if (cursor && last <= cursor) break;
         cursor = last + 1;
         await new Promise(r => setTimeout(r, mexc.rateLimit));
       }
-
+    
       allFunding.sort((a, b) => a.timestamp - b.timestamp);
+    
       let cycles = [], current = [], lastTs = null;
-
       for (const f of allFunding) {
         if (lastTs && (f.timestamp - lastTs) > 9 * 3600 * 1000) {
           if (current.length) cycles.push(current);
@@ -256,12 +266,12 @@ module.exports = async (req, res) => {
       }
       if (current.length) cycles.push(current);
       if (!cycles.length) continue;
-
+    
       const lastCycle = cycles.at(-1);
       if (!lastCycle?.length) continue;
-
+    
       const total = lastCycle.reduce((sum, f) => sum + parseFloat(f.amount), 0);
-
+    
       result.push({
         source: "mexc",
         symbol: cleanSymbol,
