@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
       });
     }
 
-     // --- PHEMEX ---
+         // --- PHEMEX ---
     const phemex = new ccxt.phemex({
       apiKey: PHEMEX_API_KEY,
       secret: PHEMEX_API_SECRET,
@@ -101,7 +101,7 @@ module.exports = async (req, res) => {
       let allFunding = [], seen = new Set();
       let page = 1;
 
-      while (true) {
+      while (page <= 4) {
         const data = await phemex.fetchFundingHistory(symbol, undefined, 100, {
           page: page,
           limit: 100
