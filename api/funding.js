@@ -29,7 +29,6 @@ module.exports = async (req, res) => {
     await binance.loadMarkets();
     const binancePositions = await binance.fetchPositions();
     const openBinance = binancePositions.filter(p => p.contracts && p.contracts > 0);
-    calcFundStats(openBinance, 'binance');
     
     for (const pos of openBinance) {
       const symbol = pos.symbol;
@@ -103,7 +102,6 @@ module.exports = async (req, res) => {
     const phemexSymbols = phemex.symbols.filter(s => s.endsWith('/USDT:USDT'));
     const phemexPositions = await phemex.fetch_positions(phemexSymbols);
     const openPhemex = phemexPositions.filter(p => p.contracts && p.contracts > 0);
-    calcFundStats(openPhemex, 'phemex');
 
     for (const pos of openPhemex) {
       const symbol = pos.symbol;
@@ -173,7 +171,6 @@ module.exports = async (req, res) => {
     await bybit.loadMarkets();
     const positions = await bybit.fetchPositions();
     const openPositions = positions.filter(p => p.contracts && p.contracts > 0);
-    calcFundStats(openBybit, 'bybit');
 
     const endTime = Date.now();
     const since = endTime - 90 * 24 * 60 * 60 * 1000;
@@ -235,7 +232,6 @@ module.exports = async (req, res) => {
     const mexcSymbols = mexc.symbols.filter(s => s.endsWith('/USDT:USDT'));
     const mexcPositions = await mexc.fetch_positions(mexcSymbols);
     const openMexc = mexcPositions.filter(p => p.contracts && p.contracts > 0);
-    calcFundStats(openMexc, 'mexc');
 
     for (const pos of openMexc) {
       const symbol = pos.symbol;
