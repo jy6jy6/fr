@@ -136,33 +136,43 @@ module.exports = async (req, res) => {
       enableRateLimit: true,
       options: { defaultType: 'swap' },
     });
-
+    
     await bybit.loadMarkets();
     const openBybit = (await bybit.fetchPositions()).filter(p => p.contracts && p.contracts > 0);
-
+    
     for (const pos of openBybit) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
+      let seen = new Set();
       let allFunding = [];
-
+    
       let currentStart = oneDayAgo;
       const currentEnd = now;
-
+    
       while (currentStart < currentEnd) {
-        const fundings = await bybit.fetchFundingHistory(symbol, currentStart, 1000, { paginate: true });
+        const fundings = await bybit.fetchFundingHistory(symbol, currentStart, 100, {
+          startTime: currentStart,
+          endTime: currentEnd,
+        });
+    
         if (!fundings?.length) break;
-
-        const filtered = fundings.filter(f => f.timestamp >= oneDayAgo && f.timestamp <= now);
-        allFunding.push(...filtered);
-
-        const nextStart = currentStart + 8 * 60 * 60 * 1000;
-        if (nextStart >= currentEnd) break;
-        currentStart = nextStart + 1;
+    
+        for (const f of fundings) {
+          const key = `${f.timestamp}-${f.amount}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            allFunding.push(f);
+          }
+        }
+    
+        const lastTs = fundings.at(-1).timestamp;
+        if (lastTs <= currentStart) break;
+        currentStart = lastTs + 1;
         await new Promise(r => setTimeout(r, 500));
       }
-
+    
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1, 0);
-
+    
       result.push({
         source: 'bybit',
         symbol: cleanSymbol,
