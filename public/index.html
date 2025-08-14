@@ -28,10 +28,10 @@
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>Total (USDT)</th>
         <th>Source</th>
-        <th>Position Size</th>
         <th>Funding Count</th>
-        <th>Total Funding (USDT)</th>
+        <th>Total Funding</th>
         <th>Holding Day</th>
         <th>Start Time</th>
         <th>End Time</th>
@@ -65,7 +65,7 @@
       return diffDays.toFixed(1);
     }
 
-    fetch('/api/funding') // calls your new backend script
+    fetch('/api/funding')
       .then(res => res.json())
       .then(data => {
         const endTime = performance.now();
@@ -75,24 +75,49 @@
         if (data.success && Array.isArray(data.result)) {
           const tbody = document.querySelector('#fundingTable tbody');
 
-          data.result.forEach(entry => {
-            const row = document.createElement('tr');
-
-            const holdingDays = getHoldingDays(entry.startTime);
-
-            row.innerHTML = `
-              <td class="symbol-cell">${entry.symbol}</td>
-              <td class="center">${entry.source}</td>
-              <td class="center">${entry.positionSize}</td>
-              <td class="center">${entry.count}</td>
-              <td class="total-cell ${parseFloat(entry.totalFunding) >= 0 ? 'positive' : 'negative'}">${parseFloat(entry.totalFunding).toFixed(2)}</td>
-              <td class="center">${holdingDays}</td>
-              <td class="center">${entry.startTime}</td>
-              <td class="center">${entry.endTime}</td>
-            `;
-
-            tbody.appendChild(row);
+          const grouped = {};
+          data.result.forEach(item => {
+            if (!grouped[item.symbol]) grouped[item.symbol] = [];
+            grouped[item.symbol].push(item);
           });
+
+          const sortedSymbols = Object.keys(grouped).sort();
+
+          for (const symbol of sortedSymbols) {
+            const entries = grouped[symbol];
+            const symbolTotal = entries.reduce((sum, e) => sum + parseFloat(e.totalFunding), 0);
+
+            entries.forEach((entry, idx) => {
+              const row = document.createElement('tr');
+
+              if (idx === 0) {
+                const tdSymbol = document.createElement('td');
+                tdSymbol.rowSpan = entries.length;
+                tdSymbol.className = 'symbol-cell';
+                tdSymbol.textContent = symbol;
+                row.appendChild(tdSymbol);
+
+                const tdTotal = document.createElement('td');
+                tdTotal.rowSpan = entries.length;
+                tdTotal.className = 'total-cell ' + (symbolTotal >= 0 ? 'positive' : 'negative');
+                tdTotal.textContent = symbolTotal.toFixed(2);
+                row.appendChild(tdTotal);
+              }
+
+              const holdingDays = getHoldingDays(entry.startTime);
+
+              row.innerHTML += `
+                <td class="center">${entry.source}</td>
+                <td class="center">${entry.count}</td>
+                <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
+                <td class="center">${holdingDays}</td>
+                <td class="center">${entry.startTime}</td>
+                <td class="center">${entry.endTime}</td>
+              `;
+
+              tbody.appendChild(row);
+            });
+          }
         } else {
           document.getElementById('loadTime').textContent = '❌ Failed to load data.';
         }
