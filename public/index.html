@@ -28,8 +28,8 @@
     <thead>
       <tr>
         <th>Symbol</th>
-        <th>Position Size</th>
         <th>Source</th>
+        <th>Position Size</th>
         <th>Funding Count</th>
         <th>Total Funding (USDT)</th>
         <th>Holding Day</th>
@@ -65,7 +65,7 @@
       return diffDays.toFixed(1);
     }
 
-    fetch('/api/1Dfunding') // calls your new backend script
+    fetch('/api/funding') // calls your new backend script
       .then(res => res.json())
       .then(data => {
         const endTime = performance.now();
