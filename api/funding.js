@@ -68,6 +68,7 @@ module.exports = async (req, res) => {
       result.push({
         source: 'binance',
         symbol: cleanSymbol,
+        positionSize: pos.contracts, // <-- only amount, no * price
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -122,6 +123,7 @@ module.exports = async (req, res) => {
       result.push({
         source: 'phemex',
         symbol: cleanSymbol,
+        positionSize: pos.contracts, // <-- only amount
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -136,27 +138,27 @@ module.exports = async (req, res) => {
       enableRateLimit: true,
       options: { defaultType: 'swap' },
     });
-    
+
     await bybit.loadMarkets();
     const openBybit = (await bybit.fetchPositions()).filter(p => p.contracts && p.contracts > 0);
-    
+
     for (const pos of openBybit) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
       let seen = new Set();
       let allFunding = [];
-    
+
       let currentStart = oneDayAgo;
       const currentEnd = now;
-    
+
       while (currentStart < currentEnd) {
         const fundings = await bybit.fetchFundingHistory(symbol, currentStart, 100, {
           startTime: currentStart,
           endTime: currentEnd,
         });
-    
+
         if (!fundings?.length) break;
-    
+
         for (const f of fundings) {
           const key = `${f.timestamp}-${f.amount}`;
           if (!seen.has(key)) {
@@ -164,18 +166,19 @@ module.exports = async (req, res) => {
             allFunding.push(f);
           }
         }
-    
+
         const lastTs = fundings.at(-1).timestamp;
         if (lastTs <= currentStart) break;
         currentStart = lastTs + 1;
         await new Promise(r => setTimeout(r, 500));
       }
-    
+
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1, 0);
-    
+
       result.push({
         source: 'bybit',
         symbol: cleanSymbol,
+        positionSize: pos.contracts, // <-- only amount
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -229,6 +232,7 @@ module.exports = async (req, res) => {
       result.push({
         source: 'mexc',
         symbol: cleanSymbol,
+        positionSize: pos.contracts, // <-- only amount
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
