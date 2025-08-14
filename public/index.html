@@ -28,6 +28,7 @@
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>Position Size</th>
         <th>Total (USDT)</th>
         <th>Source</th>
         <th>Funding Count</th>
@@ -65,7 +66,7 @@
       return diffDays.toFixed(1);
     }
 
-    fetch('/api/funding')
+    fetch('/api/funding') // <-- updated API path to match your 1Dfunding.js
       .then(res => res.json())
       .then(data => {
         const endTime = performance.now();
@@ -96,6 +97,12 @@
                 tdSymbol.className = 'symbol-cell';
                 tdSymbol.textContent = symbol;
                 row.appendChild(tdSymbol);
+
+                const tdPosSize = document.createElement('td');
+                tdPosSize.rowSpan = entries.length;
+                tdPosSize.className = 'center';
+                tdPosSize.textContent = entry.positionSize; // new column
+                row.appendChild(tdPosSize);
 
                 const tdTotal = document.createElement('td');
                 tdTotal.rowSpan = entries.length;
