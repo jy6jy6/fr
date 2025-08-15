@@ -30,8 +30,9 @@
         <th>Symbol</th>
         <th>Total (USDT)</th>
         <th>Source</th>
+        <th>Position Size</th>
         <th>Funding Count</th>
-        <th>Total Funding</th>
+        <th>Total Funding (USDT)</th>
         <th>Holding Day</th>
         <th>Start Time</th>
         <th>End Time</th>
@@ -65,7 +66,7 @@
       return diffDays.toFixed(1);
     }
 
-    fetch('/api/funding')
+    fetch('/api/1Dfunding')
       .then(res => res.json())
       .then(data => {
         const endTime = performance.now();
@@ -104,13 +105,12 @@
                 row.appendChild(tdTotal);
               }
 
-              const holdingDays = getHoldingDays(entry.startTime);
-
               row.innerHTML += `
                 <td class="center">${entry.source}</td>
+                <td class="center">${entry.positionSize}</td>
                 <td class="center">${entry.count}</td>
                 <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
-                <td class="center">${holdingDays}</td>
+                <td class="center">${getHoldingDays(entry.startTime)}</td>
                 <td class="center">${entry.startTime}</td>
                 <td class="center">${entry.endTime}</td>
               `;
