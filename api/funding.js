@@ -109,7 +109,7 @@ module.exports = async (req, res) => {
 
     // Futures equity
     const binanceFuturesBalance = await binance.fetchBalance({ type: 'future' });
-    const binanceSpotBalance = await binance.fetchBalance({ type: 'spot' });
+    const binanceSpotBalance = await binance.fetchBalance({ type: 'funding' });
     
     equityOverview.binance = {
       futuresEquity: binanceFuturesBalance.info.totalMarginBalance || 0,
@@ -230,7 +230,7 @@ module.exports = async (req, res) => {
     }
 
     const bybitFuturesBalance = await bybit.fetchBalance({ type: 'swap' });
-    const bybitSpotBalance = await bybit.fetchBalance({ type: 'spot' });
+    const bybitSpotBalance = await bybit.fetchBalance({ type: 'funding' });
     
     equityOverview.bybit = {
       futuresEquity: bybitFuturesBalance.info.result.list?.[0]?.totalEquity || 0,
