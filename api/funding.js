@@ -96,7 +96,7 @@ module.exports = async (req, res) => {
 
     // Equity overview for Binance
     const binanceFutures = await binance.fetchBalance({ type: 'future' });
-    const binanceSpot = await binance.fetchBalance({ type: 'spot' });
+    const binanceSpot = await binance.fetchBalance({ type: 'funding' });
     const binanceFuturesEquity = parseFloat(binanceFutures.info.totalMarginBalance || 0);
     const binanceSpotEquity = parseFloat(binanceSpot.free?.USDT || 0);
     equityOverview.binance = {
