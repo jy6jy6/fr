@@ -109,13 +109,12 @@ module.exports = async (req, res) => {
 
     // Futures equity
     const binanceFuturesBalance = await binance.fetchBalance({ type: 'future' });
-    const binanceFuturesEquity = parseFloat(binanceFuturesBalance.info.totalMarginBalance || 0);
-
-    // Spot/funding equity
     const binanceSpotBalance = await binance.fetchBalance({ type: 'spot' });
-    const binanceSpotEquity = parseFloat(binanceSpotBalance.total.USDT || 0);
-
-    equityOverview.binance = binanceFuturesEquity + binanceSpotEquity;
+    
+    equityOverview.binance = {
+      futuresEquity: binanceFuturesBalance.info.totalMarginBalance || 0,
+      spotRaw: binanceSpotBalance,
+    };
 
     // --- PHEMEX ---
     const phemex = new ccxt.phemex({
@@ -231,12 +230,12 @@ module.exports = async (req, res) => {
     }
 
     const bybitFuturesBalance = await bybit.fetchBalance({ type: 'swap' });
-    const bybitFuturesEquity = parseFloat(bybitFuturesBalance.info.result.list?.[0]?.totalEquity || 0);
-
     const bybitSpotBalance = await bybit.fetchBalance({ type: 'spot' });
-    const bybitSpotEquity = parseFloat(bybitSpotBalance.total.USDT || 0);
-
-    equityOverview.bybit = bybitFuturesEquity + bybitSpotEquity;
+    
+    equityOverview.bybit = {
+      futuresEquity: bybitFuturesBalance.info.result.list?.[0]?.totalEquity || 0,
+      spotRaw: bybitSpotBalance,
+    };
 
     // --- MEXC ---
     const mexc = new ccxt.mexc({
