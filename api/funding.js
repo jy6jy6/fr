@@ -11,7 +11,6 @@ module.exports = async (req, res) => {
   const MEXC_API_SECRET = process.env.MEXC_API_SECRET;
 
   const result = [];
-  const equityOverview = {};
 
   function toSGTime(ts) {
     return new Date(ts).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
@@ -23,7 +22,6 @@ module.exports = async (req, res) => {
       const currentPrice = ticker.last;
       const avgPrice = pos.entryPrice || pos.entry_price || 0;
       const amount = pos.contracts || pos.positionAmt || 0;
-
       const side = pos.side || (amount > 0 ? 'long' : 'short');
 
       let pnl = (currentPrice - avgPrice) * amount;
@@ -42,6 +40,14 @@ module.exports = async (req, res) => {
     const now = Date.now();
     const oneDayAgo = now - 24.001 * 60 * 60 * 1000;
 
+    // === EQUITY OVERVIEW ACCUMULATORS ===
+    let equityOverview = {
+      binance: 0,
+      bybit: 0,
+      phemex: 0,
+      mexc: 0,
+    };
+
     // --- BINANCE ---
     const binance = new ccxt.binance({
       apiKey: BINANCE_API_KEY,
@@ -51,10 +57,10 @@ module.exports = async (req, res) => {
     });
 
     await binance.loadMarkets();
-    const binanceBalance = await binance.fetchBalance();
-    equityOverview.binance = parseFloat(binanceBalance.info?.totalMarginBalance || 0);
 
+    // Futures positions
     const openBinance = (await binance.fetchPositions()).filter(p => p.contracts && p.contracts > 0);
+
     for (const pos of openBinance) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
@@ -70,7 +76,6 @@ module.exports = async (req, res) => {
           startTime,
           endTime,
         });
-
         if (!data?.length) break;
 
         for (const f of data) {
@@ -102,6 +107,16 @@ module.exports = async (req, res) => {
       });
     }
 
+    // Futures equity
+    const binanceFuturesBalance = await binance.fetchBalance({ type: 'future' });
+    const binanceFuturesEquity = parseFloat(binanceFuturesBalance.info.totalMarginBalance || 0);
+
+    // Spot/funding equity
+    const binanceSpotBalance = await binance.fetchBalance({ type: 'spot' });
+    const binanceSpotEquity = parseFloat(binanceSpotBalance.total.USDT || 0);
+
+    equityOverview.binance = binanceFuturesEquity + binanceSpotEquity;
+
     // --- PHEMEX ---
     const phemex = new ccxt.phemex({
       apiKey: PHEMEX_API_KEY,
@@ -111,11 +126,10 @@ module.exports = async (req, res) => {
     });
 
     await phemex.loadMarkets();
-    const phemexBalance = await phemex.fetchBalance();
-    const phemexAccount = phemexBalance.info?.data?.account || {};
-    let phemexEquity = parseFloat(phemexAccount.accountBalanceRv || 0);
-
     const openPhemex = (await phemex.fetch_positions()).filter(p => p.contracts && p.contracts > 0);
+
+    let totalPhemexUnrealized = 0;
+
     for (const pos of openPhemex) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
@@ -125,11 +139,7 @@ module.exports = async (req, res) => {
       let allFunding = [];
 
       while (offset < 1000) {
-        const data = await phemex.fetchFundingHistory(symbol, undefined, limit, {
-          limit: limit,
-          offset: offset
-        });
-
+        const data = await phemex.fetchFundingHistory(symbol, undefined, limit, { limit, offset });
         if (!data?.length) break;
 
         for (const f of data) {
@@ -141,7 +151,6 @@ module.exports = async (req, res) => {
             }
           }
         }
-
         if (data.length < limit) break;
         offset += limit;
         await new Promise(r => setTimeout(r, phemex.rateLimit));
@@ -149,7 +158,7 @@ module.exports = async (req, res) => {
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0);
       const unrealizedPnl = await getUnrealizedPnl(phemex, pos);
-      phemexEquity += unrealizedPnl;
+      totalPhemexUnrealized += unrealizedPnl;
 
       result.push({
         source: 'phemex',
@@ -162,6 +171,9 @@ module.exports = async (req, res) => {
         endTime: toSGTime(now),
       });
     }
+
+    const phemexBalance = await phemex.fetchBalance();
+    const phemexEquity = parseFloat(phemexBalance.info.data.account.accountBalanceRv || 0) + totalPhemexUnrealized;
     equityOverview.phemex = phemexEquity;
 
     // --- BYBIT ---
@@ -173,16 +185,13 @@ module.exports = async (req, res) => {
     });
 
     await bybit.loadMarkets();
-    const bybitBalance = await bybit.fetchBalance();
-    equityOverview.bybit = parseFloat(bybitBalance.info?.result?.list?.[0]?.totalEquity || 0);
-
     const openBybit = (await bybit.fetchPositions()).filter(p => p.contracts && p.contracts > 0);
+
     for (const pos of openBybit) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
       let seen = new Set();
       let allFunding = [];
-
       let currentStart = oneDayAgo;
       const currentEnd = now;
 
@@ -191,7 +200,6 @@ module.exports = async (req, res) => {
           startTime: currentStart,
           endTime: currentEnd,
         });
-
         if (!fundings?.length) break;
 
         for (const f of fundings) {
@@ -201,7 +209,6 @@ module.exports = async (req, res) => {
             allFunding.push(f);
           }
         }
-
         const lastTs = fundings.at(-1).timestamp;
         if (lastTs <= currentStart) break;
         currentStart = lastTs + 1;
@@ -223,6 +230,14 @@ module.exports = async (req, res) => {
       });
     }
 
+    const bybitFuturesBalance = await bybit.fetchBalance({ type: 'swap' });
+    const bybitFuturesEquity = parseFloat(bybitFuturesBalance.info.result.list?.[0]?.totalEquity || 0);
+
+    const bybitSpotBalance = await bybit.fetchBalance({ type: 'spot' });
+    const bybitSpotEquity = parseFloat(bybitSpotBalance.total.USDT || 0);
+
+    equityOverview.bybit = bybitFuturesEquity + bybitSpotEquity;
+
     // --- MEXC ---
     const mexc = new ccxt.mexc({
       apiKey: MEXC_API_KEY,
@@ -232,11 +247,8 @@ module.exports = async (req, res) => {
     });
 
     await mexc.loadMarkets();
-    const mexcBalance = await mexc.fetchBalance();
-    const mexcUsdt = (mexcBalance.info?.data || []).find(a => a.currency === 'USDT');
-    equityOverview.mexc = parseFloat(mexcUsdt?.equity || 0);
-
     const openMexc = (await mexc.fetch_positions()).filter(p => p.contracts && p.contracts > 0);
+
     for (const pos of openMexc) {
       const symbol = pos.symbol;
       const cleanSymbol = symbol.replace('/USDT:USDT', '');
@@ -247,9 +259,8 @@ module.exports = async (req, res) => {
       while (true) {
         const data = await mexc.fetchFundingHistory(symbol, undefined, 100, {
           page_num: page,
-          page_size: 100
+          page_size: 100,
         });
-
         if (!data?.length) break;
 
         for (const f of data) {
@@ -261,7 +272,6 @@ module.exports = async (req, res) => {
             }
           }
         }
-
         if (data.length < 100) break;
         page++;
         await new Promise(r => setTimeout(r, mexc.rateLimit));
@@ -282,9 +292,20 @@ module.exports = async (req, res) => {
       });
     }
 
-    res.status(200).json({ success: true, result, equityOverview });
+    const mexcBalance = await mexc.fetchBalance();
+    const mexcEquity = parseFloat(mexcBalance.info.data.find(c => c.currency === 'USDT')?.equity || 0);
+    equityOverview.mexc = mexcEquity;
+
+    // === FINAL TOTAL ===
+    const totalEquity =
+      equityOverview.binance +
+      equityOverview.bybit +
+      equityOverview.phemex +
+      equityOverview.mexc;
+
+    res.status(200).json({ success: true, result, equityOverview, totalEquity });
   } catch (e) {
-    console.error('❌ 1D Funding API error:', e);
+    console.error('❌ Funding API error:', e);
     res.status(500).json({ error: e.message });
   }
 };
