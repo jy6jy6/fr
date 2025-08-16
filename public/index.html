@@ -31,6 +31,7 @@
         <th>Total (USDT)</th>
         <th>Source</th>
         <th>Position Size</th>
+        <th>Unrealized PnL</th>
         <th>Funding Count</th>
         <th>Total Funding (USDT)</th>
         <th>Holding Day</th>
@@ -108,6 +109,7 @@
               row.innerHTML += `
                 <td class="center">${entry.source}</td>
                 <td class="center">${entry.positionSize}</td>
+                <td class="right">${parseFloat(entry.unrealizedPnl).toFixed(2)}</td>
                 <td class="center">${entry.count}</td>
                 <td class="right">${parseFloat(entry.totalFunding).toFixed(2)}</td>
                 <td class="center">${getHoldingDays(entry.startTime)}</td>
