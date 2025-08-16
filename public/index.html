@@ -6,7 +6,7 @@
   <title>Funding Fee Overview</title>
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #f9f9f9; }
-    table { border-collapse: collapse; width: 100%; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
     th, td { padding: 8px 12px; border: 1px solid #ccc; }
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f2f2f2; }
@@ -24,6 +24,27 @@
   <h2>Funding Fee Overview</h2>
   <p id="loadTime">⏱ Loading...</p>
 
+  <!-- New Equity Overview Table -->
+  <h3>Equity Overview</h3>
+  <table id="equityTable">
+    <thead>
+      <tr>
+        <th>Exchange</th>
+        <th>Futures</th>
+        <th>Funding</th>
+        <th>Total Equity</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <th colspan="3">Grand Total</th>
+        <th id="grandTotal" class="right"></th>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Existing Funding Details Table -->
   <table id="fundingTable">
     <thead>
       <tr>
@@ -74,15 +95,32 @@
         const loadSeconds = ((endTime - startTime) / 1000).toFixed(2);
         document.getElementById('loadTime').textContent = `⏱ Loaded in ${loadSeconds} seconds`;
 
+        // === Equity Overview ===
+        if (data.equityOverview) {
+          const tbody = document.querySelector('#equityTable tbody');
+          let totalAll = 0;
+          for (const [exchange, eq] of Object.entries(data.equityOverview)) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td class="center">${exchange}</td>
+              <td class="right">${parseFloat(eq.futures).toFixed(2)}</td>
+              <td class="right">${parseFloat(eq.funding).toFixed(2)}</td>
+              <td class="right">${parseFloat(eq.total).toFixed(2)}</td>
+            `;
+            tbody.appendChild(row);
+            totalAll += eq.total || 0;
+          }
+          document.getElementById('grandTotal').textContent = totalAll.toFixed(2);
+        }
+
+        // === Funding Details ===
         if (data.success && Array.isArray(data.result)) {
           const tbody = document.querySelector('#fundingTable tbody');
-
           const grouped = {};
           data.result.forEach(item => {
             if (!grouped[item.symbol]) grouped[item.symbol] = [];
             grouped[item.symbol].push(item);
           });
-
           const sortedSymbols = Object.keys(grouped).sort();
 
           for (const symbol of sortedSymbols) {
@@ -91,7 +129,6 @@
 
             entries.forEach((entry, idx) => {
               const row = document.createElement('tr');
-
               if (idx === 0) {
                 const tdSymbol = document.createElement('td');
                 tdSymbol.rowSpan = entries.length;
