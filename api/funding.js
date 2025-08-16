@@ -16,6 +16,28 @@ module.exports = async (req, res) => {
     return new Date(ts).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
   }
 
+  async function getUnrealizedPnl(exchange, pos) {
+    try {
+      const ticker = await exchange.fetchTicker(pos.symbol);
+      const currentPrice = ticker.last;
+      const avgPrice = pos.entryPrice || pos.entry_price || 0;
+      const amount = pos.contracts || pos.positionAmt || 0;
+
+      // Some exchanges may store side as "long"/"short", others as numeric
+      const side = pos.side || (amount > 0 ? 'long' : 'short');
+
+      let pnl = (currentPrice - avgPrice) * amount;
+      if (side.toLowerCase().includes('short')) {
+        pnl = (avgPrice - currentPrice) * amount;
+      }
+
+      return pnl;
+    } catch (err) {
+      console.error(`❌ Failed to fetch ticker for ${pos.symbol}:`, err.message);
+      return 0;
+    }
+  }
+
   try {
     const now = Date.now();
     const oneDayAgo = now - 24.001 * 60 * 60 * 1000;
@@ -64,11 +86,13 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount), 0);
+      const unrealizedPnl = await getUnrealizedPnl(binance, pos);
 
       result.push({
         source: 'binance',
         symbol: cleanSymbol,
-        positionSize: pos.contracts, // <-- only amount, no * price
+        positionSize: pos.contracts,
+        unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -119,11 +143,13 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0);
+      const unrealizedPnl = await getUnrealizedPnl(phemex, pos);
 
       result.push({
         source: 'phemex',
         symbol: cleanSymbol,
-        positionSize: pos.contracts, // <-- only amount
+        positionSize: pos.contracts,
+        unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -174,11 +200,13 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1, 0);
+      const unrealizedPnl = await getUnrealizedPnl(bybit, pos);
 
       result.push({
         source: 'bybit',
         symbol: cleanSymbol,
-        positionSize: pos.contracts, // <-- only amount
+        positionSize: pos.contracts,
+        unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
@@ -228,11 +256,13 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount), 0);
+      const unrealizedPnl = await getUnrealizedPnl(mexc, pos);
 
       result.push({
         source: 'mexc',
         symbol: cleanSymbol,
-        positionSize: pos.contracts, // <-- only amount
+        positionSize: pos.contracts,
+        unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
         startTime: toSGTime(oneDayAgo),
