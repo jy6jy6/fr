@@ -311,7 +311,30 @@ module.exports = async (req, res) => {
       0
     );
 
-    res.status(200).json({ success: true, result, equityOverview, totalEquity });
+    // Calculate funding totals
+    const totalFundingReceived = result.reduce((sum, position) => sum + (position.totalFunding || 0), 0);
+    const totalUnrealizedPnl = result.reduce((sum, position) => sum + (position.unrealizedPnl || 0), 0);
+    const totalPositions = result.length;
+    
+    const fundingSummary = {
+      totalFundingReceived: parseFloat(totalFundingReceived.toFixed(6)),
+      totalUnrealizedPnl: parseFloat(totalUnrealizedPnl.toFixed(2)),
+      totalPositions,
+      byExchange: {
+        binance: result.filter(r => r.source === 'binance').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
+        phemex: result.filter(r => r.source === 'phemex').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
+        bybit: result.filter(r => r.source === 'bybit').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
+        mexc: result.filter(r => r.source === 'mexc').reduce((sum, r) => sum + (r.totalFunding || 0), 0)
+      }
+    };
+
+    res.status(200).json({ 
+      success: true, 
+      result, 
+      equityOverview, 
+      totalEquity,
+      fundingSummary 
+    });
   } catch (e) {
     console.error('❌ Funding API error:', e);
     res.status(500).json({ error: e.message });
