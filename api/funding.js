@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
 
   try {
     const now = Date.now();
-    const oneDayAgo = now - 144.001 * 60 * 60 * 1000;
+    const oneDayAgo = now - 24.001 * 60 * 60 * 1000;
 
     // === BINANCE ===
     const binance = new ccxt.binance({
