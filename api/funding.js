@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
 
   try {
     const now = Date.now();
-    const oneDayAgo = now - 24.001 * 60 * 60 * 1000;
+    const oneDayAgo = now - 72.001 * 60 * 60 * 1000;
 
     // === BINANCE ===
     const binance = new ccxt.binance({
@@ -311,29 +311,26 @@ module.exports = async (req, res) => {
       0
     );
 
-    // Calculate funding totals
+    // Add total row to result array
     const totalFundingReceived = result.reduce((sum, position) => sum + (position.totalFunding || 0), 0);
     const totalUnrealizedPnl = result.reduce((sum, position) => sum + (position.unrealizedPnl || 0), 0);
-    const totalPositions = result.length;
     
-    const fundingSummary = {
-      totalFundingReceived: parseFloat(totalFundingReceived.toFixed(6)),
-      totalUnrealizedPnl: parseFloat(totalUnrealizedPnl.toFixed(2)),
-      totalPositions,
-      byExchange: {
-        binance: result.filter(r => r.source === 'binance').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
-        phemex: result.filter(r => r.source === 'phemex').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
-        bybit: result.filter(r => r.source === 'bybit').reduce((sum, r) => sum + (r.totalFunding || 0), 0),
-        mexc: result.filter(r => r.source === 'mexc').reduce((sum, r) => sum + (r.totalFunding || 0), 0)
-      }
-    };
+    result.push({
+      source: 'TOTAL',
+      symbol: 'Total (USDT)',
+      positionSize: '',
+      unrealizedPnl: parseFloat(totalUnrealizedPnl.toFixed(2)),
+      count: result.reduce((sum, r) => sum + (r.count || 0), 0),
+      totalFunding: parseFloat(totalFundingReceived.toFixed(6)),
+      startTime: result[0]?.startTime || toSGTime(oneDayAgo),
+      endTime: result[0]?.endTime || toSGTime(now),
+    });
 
     res.status(200).json({ 
       success: true, 
       result, 
       equityOverview, 
-      totalEquity,
-      fundingSummary 
+      totalEquity
     });
   } catch (e) {
     console.error('❌ Funding API error:', e);
