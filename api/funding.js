@@ -17,22 +17,25 @@ module.exports = async (req, res) => {
     return new Date(ts).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' });
   }
 
-  async function getUnrealizedPnl(exchange, pos) {
+  // helper: return current price, unrealized PnL, and position value
+  async function getPnLAndValue(exchange, pos) {
     try {
       const ticker = await exchange.fetchTicker(pos.symbol);
-      const currentPrice = ticker.last;
+      const currentPrice = ticker.last || 0;
       const avgPrice = pos.entryPrice || pos.entry_price || 0;
-      const amount = pos.contracts || pos.positionAmt || 0;
-      const side = pos.side || (amount > 0 ? 'long' : 'short');
+      const amount = Math.abs(pos.contracts || pos.positionAmt || 0);
+      const side = pos.side || (pos.contracts > 0 ? 'long' : 'short');
 
       let pnl = (currentPrice - avgPrice) * amount;
       if (side.toLowerCase().includes('short')) {
         pnl = (avgPrice - currentPrice) * amount;
       }
-      return pnl;
+
+      const positionValue = amount * currentPrice;
+      return { unrealizedPnl: pnl, positionValue, currentPrice };
     } catch (err) {
       console.error(`❌ Failed to fetch ticker for ${pos.symbol}:`, err.message);
-      return 0;
+      return { unrealizedPnl: 0, positionValue: 0, currentPrice: 0 };
     }
   }
 
@@ -80,12 +83,14 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount), 0);
-      const unrealizedPnl = await getUnrealizedPnl(binance, pos);
+      const { unrealizedPnl, positionValue, currentPrice } = await getPnLAndValue(binance, pos);
 
       result.push({
         source: 'binance',
         symbol: cleanSymbol,
+        currentPrice,
         positionSize: pos.contracts,
+        positionValue,
         unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
@@ -94,7 +99,6 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Equity overview for Binance
     const binanceFutures = await binance.fetchBalance({ type: 'future' });
     const binanceFunding = await binance.fetchBalance({ type: 'funding' });
     const binanceFuturesEquity = parseFloat(binanceFutures.info.totalMarginBalance || 0);
@@ -125,10 +129,7 @@ module.exports = async (req, res) => {
       let allFunding = [];
 
       while (offset < 1000) {
-        const data = await phemex.fetchFundingHistory(symbol, undefined, limit, {
-          limit,
-          offset,
-        });
+        const data = await phemex.fetchFundingHistory(symbol, undefined, limit, { limit, offset });
         if (!data?.length) break;
         for (const f of data) {
           if (f.timestamp >= oneDayAgo && f.timestamp <= now) {
@@ -145,12 +146,14 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount) * -1, 0);
-      const unrealizedPnl = await getUnrealizedPnl(phemex, pos);
+      const { unrealizedPnl, positionValue, currentPrice } = await getPnLAndValue(phemex, pos);
 
       result.push({
         source: 'phemex',
         symbol: cleanSymbol,
+        currentPrice,
         positionSize: pos.contracts,
+        positionValue,
         unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
@@ -159,11 +162,9 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Equity overview for Phemex
     const phemexBalance = await phemex.fetchBalance();
     const phemexEquity = parseFloat(phemexBalance.info.data.account.accountBalanceRv || 0);
-    const phemexUnrealized = result
-      .filter(r => r.source === 'phemex')
+    const phemexUnrealized = result.filter(r => r.source === 'phemex')
       .reduce((sum, r) => sum + (r.unrealizedPnl || 0), 0);
     equityOverview.phemex = {
       futures: phemexEquity,
@@ -213,12 +214,14 @@ module.exports = async (req, res) => {
         (sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1,
         0
       );
-      const unrealizedPnl = await getUnrealizedPnl(bybit, pos);
+      const { unrealizedPnl, positionValue, currentPrice } = await getPnLAndValue(bybit, pos);
 
       result.push({
         source: 'bybit',
         symbol: cleanSymbol,
+        currentPrice,
         positionSize: pos.contracts,
+        positionValue,
         unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
@@ -227,12 +230,9 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Equity overview for Bybit
     const bybitFutures = await bybit.fetchBalance({ type: 'swap' });
     const bybitFunding = await bybit.fetchBalance({ type: 'funding' });
-    const bybitFuturesEquity = parseFloat(
-      bybitFutures.info.result.list?.[0]?.totalEquity || 0
-    );
+    const bybitFuturesEquity = parseFloat(bybitFutures.info.result.list?.[0]?.totalEquity || 0);
     const bybitFundingEquity = parseFloat(
       bybitFunding.info.result.balance?.find(b => b.coin === 'USD')?.walletBalance || 0
     );
@@ -281,12 +281,29 @@ module.exports = async (req, res) => {
       }
 
       const total = allFunding.reduce((sum, f) => sum + parseFloat(f.amount), 0);
-      const unrealizedPnl = await getUnrealizedPnl(mexc, pos);
-
+      // --- Adjust position size for contract multiplier ---
+      const market = mexc.markets[pos.symbol];
+      const contractSize = market?.contractSize || 1;
+      const realAmount = (pos.contracts || 0) * contractSize;
+      
+      // Fetch PnL & value using actual token size
+      const ticker = await mexc.fetchTicker(pos.symbol);
+      const currentPrice = ticker.last || 0;
+      //const unrealizedPnl = (currentPrice - (pos.entryPrice || 0)) * realAmount;
+      const positionValue = realAmount * currentPrice;
+      
+      const side = pos.side || (pos.contracts > 0 ? 'long' : 'short');
+      let unrealizedPnl = (currentPrice - (pos.entryPrice || 0)) * realAmount;
+      if (side.toLowerCase().includes('short')) {
+        unrealizedPnl = ((pos.entryPrice || 0) - currentPrice) * realAmount;
+      }
+      
       result.push({
         source: 'mexc',
         symbol: cleanSymbol,
-        positionSize: pos.contracts,
+        currentPrice,
+        positionSize: realAmount,  // ✅ use real token amount
+        positionValue,
         unrealizedPnl,
         count: allFunding.length,
         totalFunding: total,
@@ -295,7 +312,6 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Equity overview for MEXC
     const mexcBalance = await mexc.fetchBalance();
     const mexcUSDT = mexcBalance.info.data.find(c => c.currency === 'USDT');
     const mexcEquity = parseFloat(mexcUSDT?.equity || 0);
@@ -305,33 +321,13 @@ module.exports = async (req, res) => {
       total: mexcEquity,
     };
 
-    // === TOTAL ===
+    // === TOTAL EQUITY ===
     const totalEquity = Object.values(equityOverview).reduce(
       (sum, ex) => sum + (ex.total || 0),
       0
     );
 
-    // Add total row to result array
-    const totalFundingReceived = result.reduce((sum, position) => sum + (position.totalFunding || 0), 0);
-    const totalUnrealizedPnl = result.reduce((sum, position) => sum + (position.unrealizedPnl || 0), 0);
-    
-    result.push({
-      source: 'TOTAL',
-      symbol: 'Total (USDT)',
-      positionSize: '',
-      unrealizedPnl: parseFloat(totalUnrealizedPnl.toFixed(2)),
-      count: result.reduce((sum, r) => sum + (r.count || 0), 0),
-      totalFunding: parseFloat(totalFundingReceived.toFixed(6)),
-      startTime: result[0]?.startTime || toSGTime(oneDayAgo),
-      endTime: result[0]?.endTime || toSGTime(now),
-    });
-
-    res.status(200).json({ 
-      success: true, 
-      result, 
-      equityOverview, 
-      totalEquity
-    });
+    res.status(200).json({ success: true, result, equityOverview, totalEquity });
   } catch (e) {
     console.error('❌ Funding API error:', e);
     res.status(500).json({ error: e.message });
