@@ -5,9 +5,7 @@ module.exports = async (req, res) => {
   const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET;
   const PHEMEX_API_KEY = process.env.PHEMEX_API_KEY;
   const PHEMEX_API_SECRET = process.env.PHEMEX_API_SECRET;
-  const BYBIT_API_KEY = process.env.BYBIT_API_KEY;
-  const BYBIT_API_SECRET = process.env.BYBIT_API_SECRET;
-  const MEXC_API_KEY = process.env.MEXC_API_KEY;
+const MEXC_API_KEY = process.env.MEXC_API_KEY;
   const MEXC_API_SECRET = process.env.MEXC_API_SECRET;
 
   const result = [];
@@ -172,77 +170,6 @@ module.exports = async (req, res) => {
       futures: phemexEquity,
       funding: 0,
       total: phemexEquity + phemexUnrealized,
-    };
-
-    // === BYBIT ===
-    const bybit = new ccxt.bybit({
-      apiKey: BYBIT_API_KEY,
-      secret: BYBIT_API_SECRET,
-      enableRateLimit: true,
-      options: { defaultType: 'swap' },
-    });
-
-    await bybit.loadMarkets();
-    const openBybit = (await bybit.fetchPositions()).filter(p => p.contracts && p.contracts > 0);
-
-    for (const pos of openBybit) {
-      const symbol = pos.symbol;
-      const cleanSymbol = symbol.replace('/USDT:USDT', '');
-      let seen = new Set();
-      let allFunding = [];
-      let currentStart = oneDayAgo;
-      const currentEnd = now;
-
-      while (currentStart < currentEnd) {
-        const fundings = await bybit.fetchFundingHistory(symbol, currentStart, 100, {
-          startTime: currentStart,
-          endTime: currentEnd,
-        });
-        if (!fundings?.length) break;
-        for (const f of fundings) {
-          const key = `${f.timestamp}-${f.amount}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            allFunding.push(f);
-          }
-        }
-        const lastTs = fundings.at(-1).timestamp;
-        if (lastTs <= currentStart) break;
-        currentStart = lastTs + 1;
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      const total = allFunding.reduce(
-        (sum, f) => sum + parseFloat(f.info?.execFee || f.amount || 0) * -1,
-        0
-      );
-      const { unrealizedPnl, positionValue, currentPrice, side } = await getPnLAndValue(bybit, pos);
-
-      result.push({
-        source: 'bybit',
-        symbol: cleanSymbol,
-        side,
-        currentPrice,
-        positionSize: pos.contracts,
-        positionValue,
-        unrealizedPnl,
-        count: allFunding.length,
-        totalFunding: total,
-        startTime: toSGTime(oneDayAgo),
-        endTime: toSGTime(now),
-      });
-    }
-
-    const bybitFutures = await bybit.fetchBalance({ type: 'swap' });
-    const bybitFunding = await bybit.fetchBalance({ type: 'funding' });
-    const bybitFuturesEquity = parseFloat(bybitFutures.info.result.list?.[0]?.totalEquity || 0);
-    const bybitFundingEquity = parseFloat(
-      bybitFunding.info.result.balance?.find(b => b.coin === 'USD')?.walletBalance || 0
-    );
-    equityOverview.bybit = {
-      futures: bybitFuturesEquity,
-      funding: bybitFundingEquity,
-      total: bybitFuturesEquity + bybitFundingEquity,
     };
 
     // === MEXC ===
