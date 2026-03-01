@@ -39,7 +39,7 @@ const MEXC_API_KEY = process.env.MEXC_API_KEY;
 
   try {
     const now = Date.now();
-    const oneDayAgo = now - 7200.001 * 60 * 60 * 1000;
+    const oneDayAgo = now - 720.001 * 60 * 60 * 1000;
 
     // === BINANCE ===
     const binance = new ccxt.binance({
